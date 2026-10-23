@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
+<title>Mastermind</title>
+<meta name="description" content="Mastermind: decifra il codice nascosto.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@700&text=%E4%B8%80%E4%BA%8C%E4%B8%89%E5%9B%9B%E4%BA%94%E5%85%AD%E4%B8%83%E5%85%AB&display=swap">
+</head>
+<body>
+<style>
+/* Layout: tavola da gioco scura (oggetto fisico, identica nei due temi). Su telefono i comandi restano fissi in basso; da 820px stanno in una colonna a fianco. */
+:root {
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-cjk: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+
+  --ground: #E6EBF0;
+  --panel: #F5F7FA;
+  --ink: #141D27;
+  --muted: #556372;
+  --line: #C8D1DA;
+  --accent: #2D63D8;
+  --on-accent: #FFFFFF;
+
+  --board: #18222D;
+  --board-row: #223040;
+  --board-hl: rgba(232, 237, 242, 0.34);
+  --hole: #0C131B;
+  --board-ink: #E8EDF2;
+  --board-muted: #8C9DAF;
+  --fb: #F2F5F8;
+
+  --p1: #FF6B6B;
+  --p2: #FFB020;
+  --p3: #3DD68C;
+  --p4: #4C9AFF;
+  --p5: #B388FF;
+  --p6: #FF7EB6;
+  --p7: #22D3EE;
+  --p8: #D2B48C;
+  --peg-ink: #0C131B;
+
+  --peg: clamp(30px, 9vw, 40px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0B1016; --panel: #141C25; --ink: #E6ECF2; --muted: #93A2B2; --line: #27323E;
+    --accent: #78A6FF; --on-accent: #0B1016;
+    --board: #1B2733; --board-row: #26364A; --hole: #0A1017;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0B1016; --panel: #141C25; --ink: #E6ECF2; --muted: #93A2B2; --line: #27323E;
+  --accent: #78A6FF; --on-accent: #0B1016;
+  --board: #1B2733; --board-row: #26364A; --hole: #0A1017;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-inline: 16px;
+  padding-block: 20px 0;
+}
+* { box-sizing: border-box; }
+
+.app {
+  max-width: 980px;
+  margin-inline: auto;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "head" "board" "info" "dock";
+}
+.head { grid-area: head; }
+.board { grid-area: board; }
+.info { grid-area: info; }
+.dock { grid-area: dock; }
+
+/* Intestazione */
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: start;
+}
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.9rem, 6vw, 2.5rem);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.rules {
+  margin: 6px 0 0;
+  font: 500 0.72rem/1.5 var(--font-data);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.head-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.head-ctl .seg span { padding: 6px 10px; }
+@media (max-width: 520px) {
+  .head { grid-template-columns: minmax(0, 1fr); }
+  .head-ctl { justify-content: space-between; }
+}
+.status {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  min-height: 1.5em;
+}
+
+/* Pulsanti */
+.btn {
+  font: 600 0.95rem var(--font-body);
+  border-radius: 10px;
+  padding: 11px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+}
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.ghost { border-color: var(--line); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:focus-visible, .pbtn:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Tavola */
+.board {
+  --fbc: 2;
+  background: var(--board);
+  color: var(--board-ink);
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+.row.cur {
+  background: var(--board-row);
+  box-shadow: inset 0 0 0 1.5px var(--board-hl);
+}
+.row.secret {
+  margin-bottom: 6px;
+  padding-bottom: 12px;
+  border-radius: 12px 12px 0 0;
+  border-bottom: 1px dashed var(--board-muted);
+}
+.idx {
+  font: 500 0.7rem var(--font-data);
+  letter-spacing: 0.04em;
+  color: var(--board-muted);
+}
+.slots {
+  display: flex;
+  gap: clamp(5px, 1.6vw, 8px);
+}
+.peg, .hole {
+  width: var(--peg);
+  height: var(--peg);
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+}
+.peg, .pbtn { position: relative; background: none; }
+.peg svg, .pbtn svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.28));
+}
+.peg i, .pbtn i {
+  position: relative;
+  font: 700 calc(var(--peg) * 0.46) / 1 var(--font-cjk);
+  font-style: normal;
+  color: var(--peg-ink);
+}
+.peg i.s3, .pbtn i.s3 { top: 12%; }
+.peg i.s8, .pbtn i.s8 { top: -3%; }
+.hole {
+  background: var(--hole);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.hole b {
+  font: 500 0.85rem var(--font-data);
+  color: var(--board-muted);
+}
+.cur .hole { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 0 1.5px var(--board-hl); }
+button.peg, button.hole { cursor: pointer; }
+button.peg:focus-visible, button.hole:focus-visible {
+  outline: 2px solid var(--board-ink);
+  outline-offset: 2px;
+}
+.fb {
+  display: grid;
+  grid-template-columns: repeat(var(--fbc), 10px);
+  gap: 5px;
+  justify-self: end;
+}
+.dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hole);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.dot.full { background: var(--fb); box-shadow: none; }
+.dot.part { background: transparent; box-shadow: inset 0 0 0 2px var(--fb); }
+
+.sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .board.won .secret .peg { animation: hop 0.5s ease both; }
+  .board.won .secret .peg:nth-child(2) { animation-delay: 0.07s; }
+  .board.won .secret .peg:nth-child(3) { animation-delay: 0.14s; }
+  .board.won .secret .peg:nth-child(4) { animation-delay: 0.21s; }
+  .board.won .secret .peg:nth-child(5) { animation-delay: 0.28s; }
+  @keyframes hop { 0% { transform: translateY(0); } 40% { transform: translateY(-8px); } 100% { transform: translateY(0); } }
+  .pbtn { transition: transform 0.08s ease; }
+  .pbtn:active:not(:disabled) { transform: scale(0.92); }
+}
+
+/* Informazioni */
+.info { display: grid; gap: 20px; align-content: start; }
+.info h2 {
+  margin: 0 0 8px;
+  font: 600 0.72rem var(--font-body);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.info p { margin: 0 0 8px; max-width: 65ch; }
+.legend { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.legend li { display: flex; align-items: center; gap: 10px; }
+.legend .dot { width: 14px; height: 14px; }
+.legend .dot.full { background: var(--ink); }
+.legend .dot.part { background: transparent; box-shadow: inset 0 0 0 2.5px var(--ink); }
+.note { color: var(--muted); font-size: 0.88rem; }
+
+.stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.stats dt { font-size: 0.78rem; color: var(--muted); }
+.stats dd {
+  margin: 2px 0 0;
+  font: 500 1.25rem var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.opts summary { cursor: pointer; font-weight: 600; padding-block: 6px; }
+.opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-block: 10px;
+  border-top: 1px solid var(--line);
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg label { position: relative; cursor: pointer; }
+.seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.seg span { display: block; padding: 8px 14px; font: 500 0.85rem var(--font-data); color: var(--muted); }
+.seg input:checked + span { background: var(--ink); color: var(--ground); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Comandi */
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-inline: -16px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+.palette { display: flex; justify-content: center; gap: 8px; }
+.pbtn {
+  width: clamp(34px, calc((100vw - 88px) / 8), 48px);
+  height: clamp(34px, calc((100vw - 88px) / 8), 48px);
+  border-radius: 10px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  --peg: 40px;
+}
+.pbtn i { font-size: 1.1rem; }
+.pbtn:disabled { opacity: 0.3; cursor: not-allowed; }
+.actions { display: flex; gap: 8px; }
+.actions .btn { flex: 1; }
+.actions #check { flex: 2; }
+
+@media (min-width: 820px) {
+  :root { --peg: 40px; }
+  body { padding-block: 32px; }
+  .app {
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    grid-template-areas: "head head" "board dock" "board info";
+    column-gap: 32px;
+    align-items: start;
+  }
+  .dock {
+    position: sticky;
+    top: 20px;
+    bottom: auto;
+    margin-inline: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .pbtn { width: 46px; height: 46px; }
+  .palette { flex-wrap: wrap; }
+}
+</style>
+
+<main class="app">
+  <header class="head">
+    <div>
+      <h1>Mastermind</h1>
+      <p class="rules" id="rules"></p>
+    </div>
+    <div class="head-ctl">
+      <div class="seg" id="langseg" role="radiogroup" aria-label="Lingua / Language">
+        <label><input type="radio" name="lang" id="langit" value="it"><span>IT</span></label>
+        <label><input type="radio" name="lang" id="langen" value="en"><span>EN</span></label>
+      </div>
+      <button type="button" class="btn ghost" id="new" data-i18n="newgame">Nuova partita</button>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+  </header>
+
+  <div class="board" id="board"></div>
+
+  <section class="info">
+    <div>
+      <h2 data-i18n="howto">Come si gioca</h2>
+      <p data-i18n="how_text"></p>
+      <ul class="legend">
+        <li><span class="dot full"></span><span data-i18n="leg_full"></span></li>
+        <li><span class="dot part"></span><span data-i18n="leg_part"></span></li>
+      </ul>
+      <p class="note" data-i18n="note_fb"></p>
+    </div>
+    <div>
+      <h2 data-i18n="results"></h2>
+      <dl class="stats" id="stats"></dl>
+    </div>
+    <details class="opts">
+      <summary data-i18n="settings"></summary>
+      <div class="opt" role="radiogroup" aria-labelledby="l-len">
+        <span id="l-len" data-i18n="l_len"></span>
+        <div class="seg">
+          <label><input type="radio" name="len" id="len4" value="4"><span>4</span></label>
+          <label><input type="radio" name="len" id="len5" value="5"><span>5</span></label>
+        </div>
+      </div>
+      <div class="opt" role="radiogroup" aria-labelledby="l-col">
+        <span id="l-col" data-i18n="l_col"></span>
+        <div class="seg">
+          <label><input type="radio" name="colors" id="col6" value="6"><span>6</span></label>
+          <label><input type="radio" name="colors" id="col8" value="8"><span>8</span></label>
+        </div>
+      </div>
+      <div class="opt" role="radiogroup" aria-labelledby="l-try">
+        <span id="l-try" data-i18n="l_try"></span>
+        <div class="seg">
+          <label><input type="radio" name="tries" id="try8" value="8"><span>8</span></label>
+          <label><input type="radio" name="tries" id="try10" value="10"><span>10</span></label>
+          <label><input type="radio" name="tries" id="try12" value="12"><span>12</span></label>
+        </div>
+      </div>
+      <div class="opt" role="radiogroup" aria-labelledby="l-dup">
+        <span id="l-dup" data-i18n="l_dup"></span>
+        <div class="seg">
+          <label><input type="radio" name="dup" id="dupY" value="1"><span data-i18n="yes"></span></label>
+          <label><input type="radio" name="dup" id="dupN" value="0"><span data-i18n="no"></span></label>
+        </div>
+      </div>
+      <div class="opt" role="radiogroup" aria-labelledby="l-num">
+        <span id="l-num" data-i18n="l_num"></span>
+        <div class="seg">
+          <label><input type="radio" name="nums" id="numY" value="1"><span data-i18n="yes"></span></label>
+          <label><input type="radio" name="nums" id="numN" value="0"><span data-i18n="no"></span></label>
+        </div>
+      </div>
+      <p class="note" data-i18n="note_set"></p>
+    </details>
+  </section>
+
+  <section class="dock" data-i18n-aria="controls">
+    <div class="palette" id="palette"></div>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="undo" data-i18n="undo">Annulla</button>
+      <button type="button" class="btn primary" id="check" data-i18n="check">Verifica</button>
+      <button type="button" class="btn primary" id="again" data-i18n="newgame" hidden>Nuova partita</button>
+    </div>
+  </section>
+</main>
+<p class="sr" id="live" aria-live="polite"></p>
+
+<script>
+(function () {
+  var KEY_CFG = 'mastermind-cfg-v1';
+  var KEY_ST = 'mastermind-stats-v1';
+  var DEF = { len: 4, colors: 6, tries: 10, dup: true, nums: true, lang: 'it' };
+  // Testi dell'interfaccia: italiano (predefinito) e inglese. Le voci con function ricevono dei parametri.
+  var I18N = {
+    it: {
+      newgame: 'Nuova partita', confirm: 'Tocca di nuovo per confermare', howto: 'Come si gioca',
+      how_text: 'In alto c\u2019\u00e8 un codice nascosto. Scegli le forme qui sotto (ognuna ha il suo colore e un numero cinese da \u4e00 a \u516b), premi Verifica e leggi i suggerimenti. Tocca un pezzo nella riga attiva per toglierlo. Con la tastiera, i tasti 1-8 scelgono le forme in ordine, poi Backspace e Invio.',
+      leg_full: 'Pezzo giusto al posto giusto', leg_part: 'Pezzo giusto, posto sbagliato',
+      note_fb: 'Il suggerimento non dice a quale pezzo si riferisce.',
+      results: 'Risultati con queste impostazioni', settings: 'Impostazioni',
+      l_len: 'Pezzi nel codice', l_col: 'Pezzi disponibili', l_try: 'Tentativi',
+      l_dup: 'Pezzi ripetuti nel codice', yes: 'S\u00ec', no: 'No', l_num: 'Numeri cinesi sui pezzi',
+      note_set: 'Cambiando un\u2019impostazione, tranne i numeri, si inizia una nuova partita.',
+      controls: 'Comandi', err_net: 'Connessione assente: riprova a premere Verifica.', err_exp: 'Partita scaduta: avvia una nuova partita.', loading: 'Preparo la partita\u2026', undo: 'Annulla', check: 'Verifica', code: 'Codice',
+      rules: function (len, colors, dup, tries) {
+        return len + ' pezzi \u00b7 ' + colors + ' forme \u00b7 ' + (dup ? 'ripetizioni ammesse' : 'senza ripetizioni') + ' \u00b7 ' + tries + ' tentativi';
+      },
+      status_cur: function (n, tries) { return 'Tentativo ' + n + ' di ' + tries; },
+      status_won: function (n) { return 'Codice decifrato in ' + n + (n === 1 ? ' tentativo' : ' tentativi'); },
+      status_lost: 'Tentativi esauriti. Il codice \u00e8 mostrato in alto.',
+      live: function (n, full, part) {
+        return 'Tentativo ' + n + ': ' + full + ' al posto giusto, ' + part + ' pezzi giusti al posto sbagliato.';
+      },
+      live_won: ' Codice decifrato.', live_lost: ' Tentativi esauriti.',
+      row_sr: function (i, names, full, part) {
+        return 'Tentativo ' + i + ': ' + names + '. ' + full + ' al posto giusto, ' + part + ' al posto sbagliato.';
+      },
+      slot_full: function (k, name) { return 'Posto ' + k + ': ' + name + '. Tocca per togliere'; },
+      slot_empty: function (k) { return 'Posto ' + k + ': vuoto'; },
+      pal: function (name, i) { return name + ' (tasto ' + i + ')'; },
+      stats: ['Giocate', 'Vinte', 'Serie', 'Tentativi medi'],
+      names: ['cerchio rosso', 'quadrato giallo', 'triangolo verde', 'stella blu', 'rombo viola', 'esagono rosa', 'croce ciano', 'cuore sabbia']
+    },
+    en: {
+      newgame: 'New game', confirm: 'Tap again to confirm', howto: 'How to play',
+      how_text: 'A hidden code sits at the top. Pick shapes below (each has its own color and a Chinese numeral from \u4e00 to \u516b), tap Check and read the feedback. Tap a piece in the active row to remove it. On a keyboard, keys 1-8 pick the shapes in order, then Backspace and Enter.',
+      leg_full: 'Right piece in the right place', leg_part: 'Right piece, wrong place',
+      note_fb: 'Feedback doesn\u2019t say which piece it refers to.',
+      results: 'Results with these settings', settings: 'Settings',
+      l_len: 'Pieces in the code', l_col: 'Available pieces', l_try: 'Attempts',
+      l_dup: 'Repeated pieces in the code', yes: 'Yes', no: 'No', l_num: 'Chinese numerals on pieces',
+      note_set: 'Changing a setting, except numerals, starts a new game.',
+      controls: 'Controls', err_net: 'No connection: try Check again.', err_exp: 'Game expired: start a new one.', loading: 'Preparing the game\u2026', undo: 'Undo', check: 'Check', code: 'Code',
+      rules: function (len, colors, dup, tries) {
+        return len + ' pieces \u00b7 ' + colors + ' shapes \u00b7 ' + (dup ? 'repeats allowed' : 'no repeats') + ' \u00b7 ' + tries + ' attempts';
+      },
+      status_cur: function (n, tries) { return 'Attempt ' + n + ' of ' + tries; },
+      status_won: function (n) { return 'Code cracked in ' + n + (n === 1 ? ' attempt' : ' attempts'); },
+      status_lost: 'Out of attempts. The code is shown at the top.',
+      live: function (n, full, part) {
+        return 'Attempt ' + n + ': ' + full + ' in the right place, ' + part + ' right pieces in the wrong place.';
+      },
+      live_won: ' Code cracked.', live_lost: ' Out of attempts.',
+      row_sr: function (i, names, full, part) {
+        return 'Attempt ' + i + ': ' + names + '. ' + full + ' in the right place, ' + part + ' in the wrong place.';
+      },
+      slot_full: function (k, name) { return 'Slot ' + k + ': ' + name + '. Tap to clear'; },
+      slot_empty: function (k) { return 'Slot ' + k + ': empty'; },
+      pal: function (name, i) { return name + ' (key ' + i + ')'; },
+      stats: ['Played', 'Won', 'Streak', 'Avg. attempts'],
+      names: ['red circle', 'yellow square', 'green triangle', 'blue star', 'purple diamond', 'pink hexagon', 'cyan cross', 'sand heart']
+    }
+  };
+  function t(key) {
+    var d = I18N[cfg.lang] || I18N.it;
+    var v = d[key] !== undefined ? d[key] : I18N.en[key];
+    return typeof v === 'function' ? v.apply(null, Array.prototype.slice.call(arguments, 1)) : v;
+  }
+  function nameOf(c) { return t('names')[c - 1]; }
+  var CN = ['一', '二', '三', '四', '五', '六', '七', '八'];
+  var SVG = [
+    '<circle cx="50" cy="50" r="45"/>',
+    '<rect x="8" y="8" width="84" height="84" rx="8"/>',
+    '<polygon points="50,6 96,90 4,90" stroke-linejoin="round"/>',
+    '<polygon points="50,3 62,37 97,37 69,59 80,94 50,73 20,94 31,59 3,37 38,37" stroke-linejoin="round"/>',
+    '<polygon points="50,2 98,50 50,98 2,50" stroke-linejoin="round"/>',
+    '<polygon points="50,4 91,27 91,73 50,96 9,73 9,27" stroke-linejoin="round"/>',
+    '<polygon points="34,5 66,5 66,34 95,34 95,66 66,66 66,95 34,95 34,66 5,66 5,34 34,34" stroke-linejoin="round"/>',
+    '<path d="M50 92C20 68 5 50 5 32 5 17 16 7 29 7 38 7 46 12 50 20 54 12 62 7 71 7 84 7 95 17 95 32 95 50 80 68 50 92Z"/>'
+  ];
+  function shapeHTML(c) {
+    return '<svg viewBox="0 0 100 100" aria-hidden="true" fill="var(--p' + c + ')" stroke="rgba(0,0,0,.3)" stroke-width="3">' + SVG[c - 1] + '</svg>';
+  }
+  function numHTML(c) { return cfg.nums ? '<i class="s' + c + '">' + CN[c - 1] + '</i>' : ''; }
+  var cfg = Object.assign({}, DEF);
+  var state = null;
+  var stats = {};
+  var armTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  function sanitize(c) {
+    var o = Object.assign({}, DEF, c || {});
+    if ([4, 5].indexOf(o.len) < 0) o.len = DEF.len;
+    if ([6, 8].indexOf(o.colors) < 0) o.colors = DEF.colors;
+    if ([8, 10, 12].indexOf(o.tries) < 0) o.tries = DEF.tries;
+    o.dup = o.dup !== false;
+    o.nums = o.nums !== false;
+    if (['it', 'en'].indexOf(o.lang) < 0) o.lang = DEF.lang;
+    return o;
+  }
+
+  function emptyRow() { var a = []; for (var i = 0; i < cfg.len; i++) a.push(null); return a; }
+
+  function api(path, body) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      if (!res.ok) { var e = new Error('http'); e.status = res.status; throw e; }
+      return res.json();
+    });
+  }
+
+  function newGame() {
+    var mine = state = { token: null, code: null, rows: [], cur: emptyRow(), over: false, won: false, busy: true, error: null };
+    applyLang();
+    syncControls();
+    buildPalette();
+    render();
+    api('/api/new', { len: cfg.len, colors: cfg.colors, tries: cfg.tries, dup: cfg.dup })
+      .then(function (r) { if (state === mine) { mine.token = r.token; mine.busy = false; render(); } })
+      .catch(function () { if (state === mine) { mine.busy = false; mine.error = 'new'; render(); } });
+  }
+
+  function statKey() { return cfg.len + '-' + cfg.colors + '-' + cfg.tries + '-' + (cfg.dup ? 1 : 0); }
+
+  function recordStat(won, tries) {
+    var k = statKey();
+    var s = stats[k] || { p: 0, w: 0, s: 0, b: 0, t: 0 };
+    s.p++;
+    if (won) { s.w++; s.s++; s.t += tries; if (s.s > s.b) s.b = s.s; }
+    else { s.s = 0; }
+    stats[k] = s;
+    lsSet(KEY_ST, stats);
+  }
+
+  function place(c) {
+    if (state.over) return;
+    var i = state.cur.indexOf(null);
+    if (i < 0) return;
+    state.cur[i] = c;
+    render();
+  }
+
+  function undo() {
+    if (state.over) return;
+    for (var i = state.cur.length - 1; i >= 0; i--) {
+      if (state.cur[i] !== null) { state.cur[i] = null; break; }
+    }
+    render();
+  }
+
+  function submit() {
+    if (state.over || state.busy || !state.token || state.cur.indexOf(null) >= 0) return;
+    var mine = state, g = state.cur.slice();
+    mine.busy = true;
+    mine.error = null;
+    render();
+    api('/api/guess', { token: mine.token, guess: g }).then(function (r) {
+      if (state !== mine) return;
+      mine.busy = false;
+      mine.rows.push({ g: g, f: { full: r.full, part: r.part } });
+      mine.cur = emptyRow();
+      var n = mine.rows.length;
+      var msg = t('live', n, r.full, r.part);
+      if (r.over) {
+        mine.over = true; mine.won = r.won; mine.code = r.code;
+        recordStat(r.won, n);
+        msg += t(r.won ? 'live_won' : 'live_lost');
+      } else {
+        mine.token = r.token;
+      }
+      $('live').textContent = msg;
+      render();
+    }).catch(function (e) {
+      if (state !== mine) return;
+      mine.busy = false;
+      mine.error = e.status === 410 ? 'expired' : 'net';
+      render();
+    });
+  }
+
+  function pegHTML(c) {
+    return '<span class="peg">' + shapeHTML(c) + numHTML(c) + '</span>';
+  }
+
+  function fbHTML(f) {
+    var h = '';
+    for (var i = 0; i < cfg.len; i++) {
+      h += '<span class="dot ' + (i < f.full ? 'full' : (i < f.full + f.part ? 'part' : '')) + '"></span>';
+    }
+    return '<div class="fb" aria-hidden="true">' + h + '</div>';
+  }
+
+  function holeHTML() { return '<span class="hole"></span>'; }
+
+  function render() {
+    var boardEl = $('board');
+    var n = state.rows.length;
+    boardEl.style.setProperty('--fbc', cfg.len === 4 ? 2 : 3);
+    boardEl.classList.toggle('won', state.over && state.won);
+
+    var h = '<div class="row secret"><span class="idx">' + t('code') + '</span><div class="slots">';
+    for (var s = 0; s < cfg.len; s++) {
+      h += state.over ? pegHTML(state.code[s]) : '<span class="hole"><b>?</b></span>';
+    }
+    h += '</div><span></span></div>';
+
+    for (var i = 0; i < cfg.tries; i++) {
+      var idx = (i + 1 < 10 ? '0' : '') + (i + 1);
+      if (i < n) {
+        var r = state.rows[i];
+        h += '<div class="row"><span class="idx">' + idx + '</span><div class="slots">' + r.g.map(pegHTML).join('') + '</div>' + fbHTML(r.f) +
+          '<span class="sr">' + t('row_sr', i + 1, r.g.map(nameOf).join(', '), r.f.full, r.f.part) + '</span></div>';
+      } else if (i === n && !state.over) {
+        h += '<div class="row cur" aria-current="step"><span class="idx">' + idx + '</span><div class="slots">';
+        for (var k = 0; k < cfg.len; k++) {
+          var c = state.cur[k];
+          if (c) {
+            h += '<button type="button" class="peg" data-i="' + k + '" aria-label="' + t('slot_full', k + 1, nameOf(c)) + '">' + shapeHTML(c) + numHTML(c) + '</button>';
+          } else {
+            h += '<button type="button" class="hole" data-i="' + k + '" aria-label="' + t('slot_empty', k + 1) + '" disabled></button>';
+          }
+        }
+        h += '</div><span></span></div>';
+      } else {
+        h += '<div class="row"><span class="idx">' + idx + '</span><div class="slots">';
+        for (var q = 0; q < cfg.len; q++) h += holeHTML();
+        h += '</div><span></span></div>';
+      }
+    }
+    boardEl.innerHTML = h;
+
+    $('rules').textContent = t('rules', cfg.len, cfg.colors, cfg.dup, cfg.tries);
+
+    var st;
+    if (!state.over) st = t('status_cur', n + 1, cfg.tries);
+    else if (state.won) st = t('status_won', n);
+    else st = t('status_lost');
+    if (state.error) st = t(state.error === 'expired' || state.error === 'new' ? 'err_exp' : 'err_net');
+    else if (state.busy && !state.token) st = t('loading');
+    $('status').textContent = st;
+
+    var full = state.cur.indexOf(null) < 0;
+    var any = state.cur.some(function (v) { return v !== null; });
+    $('check').disabled = !full || state.busy || !state.token;
+    $('undo').disabled = !any;
+    $('undo').hidden = state.over;
+    $('check').hidden = state.over;
+    $('again').hidden = !state.over;
+    var btns = $('palette').querySelectorAll('button');
+    for (var b = 0; b < btns.length; b++) btns[b].disabled = state.over;
+    renderStats();
+  }
+
+  function renderStats() {
+    var s = stats[statKey()] || { p: 0, w: 0, s: 0, b: 0, t: 0 };
+    var L = t('stats');
+    var avg = s.w ? (s.t / s.w).toFixed(1) : '\u2013';
+    if (cfg.lang === 'it') avg = avg.replace('.', ',');
+    var items = [[L[0], s.p], [L[1], s.w], [L[2], s.s], [L[3], avg]];
+    $('stats').innerHTML = items.map(function (it) {
+      return '<div><dt>' + it[0] + '</dt><dd>' + it[1] + '</dd></div>';
+    }).join('');
+  }
+
+  function buildPalette() {
+    var h = '';
+    for (var i = 1; i <= cfg.colors; i++) {
+      h += '<button type="button" class="pbtn" data-c="' + i + '" aria-label="' + t('pal', nameOf(i), i) + '">' + shapeHTML(i) + numHTML(i) + '</button>';
+    }
+    $('palette').innerHTML = h;
+  }
+
+  function syncControls() {
+    $('len' + cfg.len).checked = true;
+    $('col' + cfg.colors).checked = true;
+    $('try' + cfg.tries).checked = true;
+    $('dup' + (cfg.dup ? 'Y' : 'N')).checked = true;
+    $('num' + (cfg.nums ? 'Y' : 'N')).checked = true;
+    $('lang' + cfg.lang).checked = true;
+  }
+
+  function disarm() {
+    clearTimeout(armTimer);
+    armTimer = null;
+    $('new').textContent = t('newgame');
+  }
+
+  // Applica la lingua ai testi fissi della pagina
+  function applyLang() {
+    document.documentElement.lang = cfg.lang;
+    var el = document.querySelectorAll('[data-i18n]'), i;
+    for (i = 0; i < el.length; i++) el[i].textContent = t(el[i].getAttribute('data-i18n'));
+    el = document.querySelectorAll('[data-i18n-aria]');
+    for (i = 0; i < el.length; i++) el[i].setAttribute('aria-label', t(el[i].getAttribute('data-i18n-aria')));
+    $('lang' + cfg.lang).checked = true;
+    disarm();
+  }
+
+  $('new').addEventListener('click', function () {
+    if (!state.over && state.rows.length > 0 && !armTimer) {
+      $('new').textContent = t('confirm');
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    newGame();
+  });
+  $('again').addEventListener('click', newGame);
+  $('check').addEventListener('click', submit);
+  $('undo').addEventListener('click', undo);
+
+  $('palette').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-c]');
+    if (b) place(+b.dataset.c);
+  });
+
+  $('board').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-i]');
+    if (!b || state.over) return;
+    var i = b.dataset.i;
+    state.cur[+i] = null;
+    render();
+    var nb = $('board').querySelector('button[data-i="' + i + '"]');
+    if (nb && !nb.disabled) nb.focus();
+  });
+
+  // Cambio lingua: non interrompe la partita
+  $('langseg').addEventListener('change', function (e) {
+    cfg.lang = e.target.value === 'en' ? 'en' : 'it';
+    lsSet(KEY_CFG, cfg);
+    applyLang();
+    buildPalette();
+    render();
+  });
+
+  document.querySelector('.opts').addEventListener('change', function (e) {
+    var n = e.target.name, v = e.target.value;
+    if (n === 'nums') {
+      cfg.nums = v === '1';
+      lsSet(KEY_CFG, cfg);
+      buildPalette();
+      render();
+      return;
+    }
+    if (n === 'len') cfg.len = +v;
+    else if (n === 'colors') cfg.colors = +v;
+    else if (n === 'tries') cfg.tries = +v;
+    else if (n === 'dup') cfg.dup = v === '1';
+    lsSet(KEY_CFG, cfg);
+    newGame();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var t = e.target;
+    if (t && t.closest && t.closest('input,summary')) return;
+    var onButton = !!(t && t.closest && t.closest('button'));
+    if (state.over) {
+      if (e.key === 'Enter' && !onButton) newGame();
+      return;
+    }
+    if (/^[1-8]$/.test(e.key)) {
+      if (+e.key <= cfg.colors) place(+e.key);
+    } else if (e.key === 'Backspace') {
+      e.preventDefault();
+      undo();
+    } else if (e.key === 'Enter' && !onButton) {
+      submit();
+    }
+  });
+
+  function start(data) {
+    cfg = sanitize(lsGet(KEY_CFG));
+    stats = lsGet(KEY_ST) || {};
+    if (data && data.state && data.cfg) {
+      cfg = sanitize(data.cfg);
+      state = data.state;
+      applyLang();
+      syncControls();
+      buildPalette();
+      render();
+    } else {
+      newGame();
+    }
+  }
+
+  start();
+})();
+</script>
+
+</body>
+</html>
